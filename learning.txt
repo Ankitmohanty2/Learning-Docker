@@ -1,0 +1,177 @@
+Docker is a platform for packaging, distribution and running applications inside lightweight,
+portable units called containers
+
+docker contains:
+code 
+libraries
+dependencies
+env variables
+os level settings
+
+docker containers - it is a lightweight isolated box that runs applications with:
+its own file systems
+its own dependencies
+its own process
+BUT shares host OS kernel - reason why lightweight
+Hardware
+   ↓
+Host Operating System
+   ↓
+Docker Engine
+   ↓
+Containers
+   ↓
+Application + Dependencies
+
+
+Virtual machines also solve the same problem of "running on my system"
+but very expensive as they have their own OS
+Hardware
+   ↓
+Host Operating System
+   ↓
+Hypervisor
+   ↓
+Guest OS
+   ↓
+Application
+
+
+IMAGE vs CONTAINER
+image is a package of all the code,libraries,dependencies,etc along with instructions on how to run and all
+container is a container iff there is something to run in this isolated env
+docker container is just a running instance of docker image
+
+
+how to create docker images?
+docker images 2 types:
+- dockerfile :(layered) we define all stuff and all like our code... most used
+- base image : predefined images available for use, python,mySQL,LLM's etc
+
+create the dockerfile, then run in terminal
+docker build -t NAME .   -> builds the image ONLY (-t : name)(. : current location where image is present)
+you can see the image in docker desktop
+
+docker run --name NAME_OF_CONTAINER NAME_OF_IMAGE_TO_RUN_IN_CONTAINER  : this is to run a container
+docker run -it --name NAME_OF_CONTAINER NAME_OF_IMAGE_TO_RUN_IN_CONTAINER /bin/sh: (-it : makes it interactive)
+
+WHATS HAPPENING INSIDE:
+docker image is a READ-ONLY layer
+docker container takes this and creates a WRITABLE LAYER which helps to copy the files like app.py,dockerfile into the container
+
+WHY READ-ONLY LAYER?
+increases security
+if images are writeable, then container will make changes and will create problems
+
+docker ps : gives all running containers list
+docker ps -a : all containers irrespective of running 
+
+docker stop CONTAINER_ID : stop running
+docker rm CONTAINER_ID : remove container
+
+docker image ls : list of images
+
+PORT MAPPING
+when working with flask and all where you have outputs on ports of local machine
+the container will also have a the same port number where our image will be running, so we need to map 
+this local machine port with the port of the container
+
+docker run -p 5000:5000 --name NAME_OF_CONTAINER NAME_OF_IMAGE_TO_RUN_IN_CONTAINER
+-p : port MAPPING
+5000:5000 -> 5000 of my local machine mapped to 5000 of the container
+
+DOCKER NETWORKS
+if one container wants to talk/interact with another container, they should be in the same network
+whenever we create a container, docker assigns it automatically to a network called BRIDGE network
+by default, if multiple containers running -> they are isolated, ie they cannot communicate with each other
+
+in project3 : tried to create MySQL and flask container in same network
+MySQL image:
+               dockerfile: add env , we can also initialise database 
+                           COPY init.sql/docker-entrypoint-initdb.d/ -> command for this
+                           expose mysql to port -> default : 3306 but dont use if your system has mysql , may cause conflict
+                           EXPOSE 3307
+
+before running this image, build the network
+docker network ls -> list of all network
+docker network create NAME -> create the network
+docker network rm NAME
+
+now run the container on that network
+docker run -dp 3307:3306 --name mysql_container --network  kunal_network mysql_image 
+dp -> detached port , avoids logs and all, function is same
+
+error :container immediately stopping, error -> underscores in mysql_image
+solution : correct and delete image, create again
+
+you can check database connections in workbench or run interactive mysql shell:
+docker exec -it mysql_container mysql -u root -p
+
+Flask image:
+            requirements -> flask, pymsql ,cryptography because pymsql uses SHA-2
+            write the flask 
+
+create the image and run the container on the same network -> kunal_network
+
+def db_connection():
+    connection = pymysql.connect(
+        host='mysql_container',
+        user='root',
+        password='demopassword',
+        database='demodb'
+    )
+    return connection
+why did we create the connection with host = 'mysql_container'?
+its the internal DNS
+
+DOCKER COMPOSE 
+managing multiple containers individually is very hectic, so to run multiple containers as a single unit -> DOCKER COMPOSE
+it will create a network with the containers then we can decide in which order containers turned on and off
+each service -> container
+
+project4 : we will create the same mysql and falsk containers but using COMPOSE
+           let the dockerfile of flask be as it is, deleting the mysql dockerfile
+           so we will define build for flask, but create image for mysql in docker-compose.yml
+           .yml -> similar to JSON but better , use 2 spaces for indentation
+
+
+create the docker-compose file then,
+docker-compose up -d -> build if not built and then run 
+docker-compose up -d --build -> building the images again
+docker-compose down
+
+docker-compose will create a compose stack of containers
+
+DOCKER STORAGE:
+1. bind mount
+2. docker volumes
+
+bind mount:
+            say we have a large file that needs to be run, we can keep mount it to the container directly from local
+            means that file will NOT be in the image, but will be present in the container
+            these are managed by user, any change in the local file that is mounted -> reflected in container
+            
+docker volumes:
+            if container stopped, and started again -> the data will be lost
+            but if we connect it to the volumes, it can resume
+            volumes completely managed by docker(safer)
+            so whatever SQL container var/lib/sql connected to volumes var/lib/docker/volumes/<your_volumes>  
+
+project5:
+only mySQL, create the image and connect with volumes
+docker build -t mysql_image_volume MySQL/. 
+docker run -dp 3307:3306 --name mysql_container_volume -v kunal_volume:/var/lib/mysql mysql_image_volume
+
+if you delete and build container without connecting to volume
+docker run -dp 3307:3306 --name mysql_container_volume mysql_image_volume 
+you will not see any previous data
+
+but if you run it with volume you can see the previous data
+
+
+PUSHING IMAGE TO DOCKERHUB
+pusing the project2 
+build image with username:
+docker build -t kunal5002/custom_flask_image:0.0.1 .
+docker login
+docker push kunal5002/custom_flask_image:0.0.1
